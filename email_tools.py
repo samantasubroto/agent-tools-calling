@@ -1,8 +1,10 @@
 """Email tools.
 
-Sends a constant-template email from SENDER_EMAIL through Gmail SMTP.
-Needs a Gmail App Password in the EMAIL_APP_PASSWORD environment variable
-(Google Account > Security > 2-Step Verification > App passwords).
+Sends an email (custom subject/body, or a constant template) through Gmail
+SMTP (port 587, STARTTLS).
+Settings come from environment variables (.env):
+  EMAIL_SENDER        the Gmail address to send from
+  EMAIL_APP_PASSWORD  its Gmail App Password (spaces are ignored)
 """
 
 import os
@@ -10,9 +12,8 @@ import re
 import smtplib
 from email.message import EmailMessage
 
-SENDER_EMAIL = "subroto746@gmail.com"
 SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = 465  # SSL
+SMTP_PORT = 587  # STARTTLS
 
 # Constant template. {recipient} is filled in by the tool.
 EMAIL_SUBJECT = "Hello from Subroto's AI assistant"
@@ -27,35 +28,40 @@ Subroto
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
-def send_email(to_email: str) -> str:
-    """Send the constant template email to `to_email`."""
+def send_email(to_email: str, subject: str = "", body: str = "") -> str:
+    """Send an email. Uses the constant template when subject/body are empty."""
     to_email = to_email.strip()
     if not _EMAIL_RE.match(to_email):
         raise ValueError(f"Invalid email address: {to_email!r}")
 
-    password = os.getenv("EMAIL_APP_PASSWORD")
-    if not password:
-        raise RuntimeError("EMAIL_APP_PASSWORD is not set in the environment.")
+    # Read at call time so values loaded from .env by main.py are picked up.
+    sender = os.getenv("EMAIL_SENDER")
+    password = (os.getenv("EMAIL_APP_PASSWORD") or "").replace(" ", "")
+    if not sender or not password:
+        raise RuntimeError("EMAIL_SENDER and EMAIL_APP_PASSWORD must be set in .env.")
 
     msg = EmailMessage()
-    msg["From"] = SENDER_EMAIL
+    msg["From"] = sender
     msg["To"] = to_email
-    msg["Subject"] = EMAIL_SUBJECT
-    msg.set_content(EMAIL_BODY.format(recipient=to_email))
+    msg["Subject"] = subject.strip() or EMAIL_SUBJECT
+    msg.set_content(body or EMAIL_BODY.format(recipient=to_email))
 
-    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
-        server.login(SENDER_EMAIL, password)
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+        server.starttls()
+        server.login(sender, password)
         server.send_message(msg)
 
-    return f"Email sent from {SENDER_EMAIL} to {to_email}."
+    return f"Email sent from {sender} to {to_email}."
 
 
 EMAIL_TOOL_SCHEMAS = [
     {
         "name": "send_email",
         "description": (
-            "Send the standard greeting email template to one recipient. "
-            "Use only when the user asks to send an email."
+            "Send an email to one recipient. Provide a subject and body to send "
+            "custom text (e.g. a summary you wrote). If both are omitted, a "
+            "standard greeting template is sent. Use only when the user asks "
+            "to send an email."
         ),
         "input_schema": {
             "type": "object",
@@ -63,7 +69,15 @@ EMAIL_TOOL_SCHEMAS = [
                 "to_email": {
                     "type": "string",
                     "description": "Recipient email address, e.g. name@example.com",
-                }
+                },
+                "subject": {
+                    "type": "string",
+                    "description": "Email subject line. Optional.",
+                },
+                "body": {
+                    "type": "string",
+                    "description": "Plain-text email body. Optional.",
+                },
             },
             "required": ["to_email"],
         },

@@ -21,9 +21,10 @@ from email_tools import (
 )
 from tools import TOOL_FUNCTIONS as _BASE_FUNCTIONS
 from tools import TOOL_SCHEMAS as _BASE_SCHEMAS
+from web_tools import WEB_TOOL_FUNCTIONS, WEB_TOOL_SCHEMAS
 
-TOOL_FUNCTIONS = {**_BASE_FUNCTIONS, **EMAIL_TOOL_FUNCTIONS}
-TOOL_SCHEMAS = _BASE_SCHEMAS + EMAIL_TOOL_SCHEMAS
+TOOL_FUNCTIONS = {**_BASE_FUNCTIONS, **WEB_TOOL_FUNCTIONS, **EMAIL_TOOL_FUNCTIONS}
+TOOL_SCHEMAS = _BASE_SCHEMAS + WEB_TOOL_SCHEMAS + EMAIL_TOOL_SCHEMAS
 
 load_dotenv()
 
@@ -51,7 +52,11 @@ def run_tool(name: str, tool_input: dict) -> str:
     if func is None:
         return f"Unknown tool: {name}"
     if name in REQUIRES_CONFIRMATION:
-        answer = input(f"Allow '{name}' with {tool_input}? [y/N] ").strip().lower()
+        print(f"\n--- '{name}' wants to run with: ---")
+        for key, value in tool_input.items():
+            print(f"{key}: {value}")
+        print("-----------------------------------")
+        answer = input("Allow? [y/N] ").strip().lower()
         if answer != "y":
             return "The user declined to run this tool."
     try:
